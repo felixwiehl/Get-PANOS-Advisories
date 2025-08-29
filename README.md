@@ -16,21 +16,27 @@ Security Advisory: https://security.paloaltonetworks.com
 ![Usage in PRTG](screenshot.png)
 
 ## Configuration
-- Save the script into _Custom Sensors\EXE_ and create a hardlink onto _Custom Sensors\EXEXML_:  
+- Save the script into _Custom Sensors\EXEXML_ and create a hardlink onto _Custom Sensors\EXE_:  
 ```
 mklink -H "<PRTG>\Custom Sensors\EXE\Get-PANOS-Advisories.ps1" "<PRTG>\Custom Sensors\EXEXML\Get-PANOS-Advisories.ps1"
 ```
 
-- Add a new _EXE/SCRIPT_ or _Advanced EXE/SCRIPT_ sensor in PRTG and choose _Get-PANOS-Advisories.ps1_ as _EXE/Script_.  
+- Add a new _EXE/Script_ or _Advanced EXE/Sscipt_ sensor in PRTG and choose _Get-PANOS-Advisories.ps1_ as _EXE/Script_.  
 
 - Enter your parameters (see _Usage_ for all available parameters), e.g.:  
 ```
 -ip %host -advanced -severities "CRITICAL", "HIGH", "MEDIUM", "LOW"
 ```
 
+<br>
+
+If you want to monitor a specific PAN-OS version instead of a device, use the **-panos** parameter instead of **--ip**:  
+```
+-panos "10.1.11-h2" -advanced -severities "CRITICAL", "HIGH", "MEDIUM", "LOW"
+```
+
 ## Exclude CVE's
 If you want to exclude certain CVE's from being reported, e.g. if you know a certain CVE may apply to your PAN-OS version, but not your configuration, you can use the **-exclude** parameter.  
-For Example:  
 ```
 -ip %host -advanced -severities "CRITICAL", "HIGH", "MEDIUM", "LOW" -exclude "CVE-2024-3382", "CVE-2024-3381"
 ```

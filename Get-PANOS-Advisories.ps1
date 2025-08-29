@@ -21,8 +21,8 @@
 .PARAMETER severities
     An array of severity levels to filter the advisories. Options are "HIGH", "CRITICAL", "MEDIUM", "LOW", "NONE".
 
-.PARAMETER sort
-    The sorting order for advisories. Options are: "cvss", "doc", "date", "updated". "-" before any option will invert the sorting, e.g. "-cvss"
+# .PARAMETER sort
+#     The sorting order for advisories. Options are: "cvss", "doc", "date", "updated". "-" before any option will invert the sorting, e.g. "-cvss"
 
 .PARAMETER advanced
     Return count and CVE-ID as XML. Can be used for PRTG Advanced EXE/Script Sensor.
@@ -45,8 +45,8 @@
 
 .NOTES
     Author: Felix Schwärzler
-    Date: 15.04.2024
-    Version: 1.0
+    Date: 29.08.2025
+    Version: 1.1
     GitHub: https://github.com/stayfesch/Get-PANOS-Advisories
 
     Requires SNMP Powershell Module (https://www.powershellgallery.com/packages/SNMP/1.0.0.1)
@@ -62,8 +62,8 @@ param (
     [string]$ip,
     [string]$community = "public",
     [string]$panos,
-    [string[]]$severities = @("HIGH", "CRITICAL"),
-    [string]$sort = "-cvss",
+    [string[]]$severities = @("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFORMATIONAL"),
+    # [string]$sort = "-cvss",
     [switch]$advanced,
     [string[]]$exclude = @()
 )
@@ -71,8 +71,7 @@ param (
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]'Tls11,Tls12'
 
 function Get-URI() {
-    $url = "https://security.paloaltonetworks.com/api/v1/products/PAN-OS/$panos/advisories/?sort=$sort"
-
+    $url = "https://security.paloaltonetworks.com/json/?version=PAN-OS+$panos&product=PAN-OS"
     $severities | ForEach-Object {
         $url += "&severity=$_"
     }
@@ -115,54 +114,55 @@ if ($ip) {
 }
 
 $uri = Get-URI
-$response = Invoke-RestMethod -Uri $uri
 
-if ($response.success -ne "True") {
-    if ($response.message -eq "Unable to find product.") {
-        Write-Host "<prtg><result><channel>Version not in Advisory</channel><value>1</value></result>"
+try {
+    $response = Invoke-WebRequest -Uri $uri -UseBasicParsing
+    $data = $response | ConvertFrom-Json
+
+    if ($response.StatusCode -ne 200) {
+        Write-Host "<prtg>"
         foreach ($severity in $severities) {
             Write-Host "<result><channel>$severity</channel><value>0</value></result>"
         }
-        Write-Host "<text>$($response.message) - Most likely there are no advisories (yet) for your version: $panos.</text></prtg>"
+        Write-Host "<text>HTTP $($response.StatusCode) - Error while fetching API</text></prtg>"
+        Exit-Error 3 "HTTP $($response.StatusCode)" 3
+    }
+
+    # Output for "normal" EXE/Script Sensor
+    if (-not $advanced) {
+        Write-Host "$($data.Count):$($data.Count) Security advisories found for PAN-OS $panos that match ($severities)."
         exit 0
-    } else {
-        Exit-Error 3 $response.message 3
     }
-}
 
-# Output for "normal" EXE/Script Sensor
-if (-not $advanced) {
-    Write-Host "$($response.data.Count):$($response.data.Count) security advisories found for PAN-OS $panos."
+    # XML Output for Advanced EXE/Script Sensor
+    $text = ""
+    Write-Host "<prtg>"
+    foreach ($severity in $severities) {
+        Write-Host "<result>"
+        Write-Host "<channel>$severity</channel>"
+        $value = 0
+
+        foreach ($cve in $data) {
+            if ($cve.ID -in $exclude) {
+                continue
+            }
+            if ($cve.threatSeverity -eq $severity) {
+                $text += "$($cve.ID), "
+                $value += 1
+            }
+        }
+
+        Write-Host "<value>$value</value>"
+        Write-Host "</result>"
+    }
+
+    if ($text.Length -gt 2) {
+        $text = $text.Substring(0,$text.Length-2)
+    }
+
+    Write-Host "<text>$text</text>"
+    Write-Host "</prtg>"
     exit 0
+} catch {
+    Exit-Error 99 $_.Exception.Message 99
 }
-
-# XML Output for Advanced EXE/Script Sensor
-$text = ""
-Write-Host "<prtg>"
-Write-Host "<result><channel>Version not in Advisory</channel><value>0</value></result>"
-foreach ($severity in $severities) {
-    Write-Host "<result>"
-    Write-Host "<channel>$severity</channel>"
-    $value = 0
-
-    foreach ($cve in $response.data) {
-        if ($cve.CVE_data_meta.ID -in $exclude) {
-            continue
-        }
-        if ($cve.impact.cvss.baseSeverity -eq $severity) {
-            $text += "$($cve.CVE_data_meta.ID), "
-            $value += 1
-        }
-    }
-
-    Write-Host "<value>$value</value>"
-    Write-Host "</result>"
-}
-
-if ($text.Length -gt 2) {
-    $text = $text.Substring(0,$text.Length-2)
-}
-
-Write-Host "<text>$text</text>"
-Write-Host "</prtg>"
-exit 0
